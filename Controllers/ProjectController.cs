@@ -1,0 +1,275 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ProjectManagementService.DTOs.Requests;
+using ProjectManagementService.Models;
+using ProjectManagementService.Services;
+
+namespace ProjectManagementService.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ProjectController : ControllerBase
+    {
+        private readonly ProjectService _projectService;
+
+        public ProjectController(ProjectService projectService)
+        {
+            _projectService = projectService;
+        }
+
+        [HttpGet]
+        [Authorize]
+        public async Task<ActionResult<List<Project>>> GetAllProjects()
+        {
+            try
+            {
+                return await _projectService.GetAllProjectsAsync();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpPost]
+        [Authorize]
+        public async Task<ActionResult<Project>> CreateProject(CreateProjectRequest project)
+        {
+            try{
+                var newProject = new Project
+                {
+                    Name = project.Name,
+                    Description = project.Description,
+                    StartDate = project.StartDate,
+                    EndDate = project.EndDate,
+                    ProjectMembers = project.ProjectMemberIds,
+                    ProjectOwner = project.ProjectOwner,
+                    Status = ProjectStatus.NotStarted
+                };
+
+                var createdProject = await _projectService.CreateProject(newProject);
+
+                if (createdProject == null)
+                {
+                    return StatusCode(500, "Failed to create the project.");
+                }
+
+                return CreatedAtRoute("GetProject", new { id = createdProject.Id }, createdProject);
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpGet("{id:length(24)}", Name = "GetProject")]
+        [Authorize]
+        public async Task<ActionResult<Project>> GetProject(string id)
+        {
+            try
+            {
+                var project = await _projectService.GetProjectById(id);
+
+                if (project == null)
+                {
+                    return NotFound();
+                }
+
+                return project;
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpPut("{id:length(24)}")]
+        [Authorize]
+        public async Task<ActionResult<Project>> UpdateProject(string id, UpdateProjectRequest project)
+        {
+            try
+            {
+                // Fetch the project by ID
+                var projectIn = await _projectService.GetProjectById(id);
+
+                // Check if the project exists
+                if (projectIn == null)
+                {
+                    return NotFound($"Project with ID {id} not found.");
+                }
+
+                // Update project properties from the request
+                projectIn.Name = project.Name;
+                projectIn.Description = project.Description;
+                projectIn.StartDate = project.StartDate;
+                projectIn.EndDate = project.EndDate;
+                projectIn.ProjectMembers = project.ProjectMemberIds;
+                projectIn.ProjectOwner = project.ProjectOwner;
+
+                // Update the project in the database
+                var updatedProject = await _projectService.UpdateProject(id, projectIn);
+
+                if (updatedProject == null)
+                {
+                    return StatusCode(500, "Failed to update the project.");
+                }
+
+                // Return the updated project
+                return Ok(updatedProject);
+            }
+            catch (Exception e)
+            {
+                // Log the exception (optional)
+                Console.WriteLine($"Error updating project: {e.Message}");
+                return StatusCode(500, "An error occurred while updating the project.");
+            }
+        }
+
+
+        [HttpDelete("{id:length(24)}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteProjectById(string id)
+        {
+            try
+            {
+                var project = await _projectService.GetProjectById(id);
+
+                if (project == null)
+                {
+                    return NotFound();
+                }
+
+                await _projectService.RemoveProject(id);
+
+                return NoContent();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpPost("{id:length(24)}/members")]
+        [Authorize]
+        public async Task<IActionResult> AddMember(string id, string userId)
+        {
+            try
+            {
+                await _projectService.AddProjectMember(id, userId);
+                return NoContent();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpDelete("{id:length(24)}/members")]
+        [Authorize]
+        public async Task<IActionResult> RemoveMember(string id, string userId)
+        {
+            try
+            {
+                await _projectService.RemoveProjectMember(id, userId);
+                return NoContent();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpPost("{id:length(24)}/tasks")]
+        [Authorize]
+        public async Task<IActionResult> AddTask(string id, CreateAndUpdateTaskRequest task)
+        {
+            try
+            {
+                // Validate and convert task status from string to enum
+                if (!Enum.TryParse<ProjectTaskStatus>(task.Status, true, out var taskStatus))
+                {
+                    return BadRequest("Invalid status value.");
+                }
+
+                // Create new task object
+                var newTask = new ProjectTask
+                {
+                    Title = task.Title,
+                    Description = task.Description,
+                    AssignedTo = task.AssignedTo,
+                    DueDate = task.DueDate,
+                    Status = taskStatus
+                };
+
+                // Create task in database and get its ID
+                var taskId = await _projectService.CreateTask(newTask);
+
+                // Check if task ID was generated correctly
+                if (taskId == null)
+                {
+                    return StatusCode(500, "Task ID was not generated correctly.");
+                }
+
+                // Add task ID to the project
+                bool taskAdded = await _projectService.AddTask(id, taskId);
+                if (!taskAdded)
+                {
+                    return StatusCode(500, "Failed to add task to the project.");
+                }
+
+                // Return the created task details
+                return CreatedAtRoute("GetTask", new { id = taskId }, newTask);
+            }
+            catch (Exception e)
+            {
+                // Log the exception (optional) and return a 500 status code with error message
+                Console.WriteLine($"Error adding task: {e.Message}");
+                return StatusCode(500, "An error occurred while adding the task.");
+            }
+        }
+
+
+        [HttpPut("{id:length(24)}/tasks/{taskId:length(24)}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateTask(string id, string taskId, CreateAndUpdateTaskRequest task)
+        {
+            try
+            {
+                if (!Enum.TryParse<ProjectTaskStatus>(task.Status, true, out var taskStatus))
+                {
+                    return BadRequest("Invalid status value.");
+                }
+
+                var newTask = new ProjectTask
+                {
+                    Title = task.Title,
+                    Description = task.Description,
+                    AssignedTo = task.AssignedTo,
+                    DueDate = task.DueDate,
+                    Status = taskStatus
+                };
+                await _projectService.UpdateTask(taskId, newTask);
+                return NoContent();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+
+        [HttpDelete("{id:length(24)}/tasks/{taskId:length(24)}")]
+        [Authorize]
+        public async Task<IActionResult> RemoveTask(string id, string taskId)
+        {
+            try
+            {
+                await _projectService.RemoveTask(id, taskId);
+                return NoContent();
+            }
+            catch (Exception e)
+            {
+                return StatusCode(500, e.Message);
+            }
+        }
+    }
+}
