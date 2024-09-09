@@ -24,6 +24,31 @@ var DbNamePath = AWSParameterStore["DbNamePath"];
 var Issuer = JwtSettings["Issuer"];
 var Audience = JwtSettings["Audience"];
 
+if (string.IsNullOrEmpty(JwtSecretKeyPath))
+{
+    throw new ArgumentNullException(nameof(JwtSecretKeyPath), "JwtSecretKeyPath cannot be null or empty.");
+}
+
+if (string.IsNullOrEmpty(DbConnectionStringPath))
+{
+    throw new ArgumentNullException(nameof(DbConnectionStringPath), "DbConnectionStringPath cannot be null or empty.");
+}
+
+if (string.IsNullOrEmpty(DbNamePath))
+{
+    throw new ArgumentNullException(nameof(DbNamePath), "DbNamePath cannot be null or empty.");
+}
+
+if (string.IsNullOrEmpty(Issuer))
+{
+    throw new ArgumentNullException(nameof(Issuer), "Issuer cannot be null or empty.");
+}
+
+if (string.IsNullOrEmpty(Audience))
+{
+    throw new ArgumentNullException(nameof(Audience), "Audience cannot be null or empty.");
+}
+
 await ConfigureJwtAuthentication(builder, ssmClient, JwtSecretKeyPath, Issuer, Audience);
 await ConfigureDatabase(builder, ssmClient, DbConnectionStringPath, DbNamePath);
 
