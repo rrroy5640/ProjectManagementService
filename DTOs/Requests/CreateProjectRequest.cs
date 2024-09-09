@@ -10,6 +10,6 @@ namespace ProjectManagementService.DTOs.Requests
         public DateTime? EndDate { get; set; }
         public required List<string> ProjectMemberIds { get; set; }
         public required string ProjectOwner { get; set; }
-        public List<ProjectTask>? Tasks { get; set; }
+        public List<CreateAndUpdateTaskRequest>? Tasks { get; set; }
     }
 }

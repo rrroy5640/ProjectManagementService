@@ -18,6 +18,8 @@ namespace ProjectManagementService.Models
         public required string ProjectOwner { get; set; }
 
         public List<string>? TaskIds { get; set; }
+        
+        [BsonRepresentation(BsonType.String)]
         public ProjectStatus Status { get; set; }
     }
 

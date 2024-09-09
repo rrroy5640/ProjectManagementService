@@ -35,7 +35,46 @@ namespace ProjectManagementService.Controllers
         [Authorize]
         public async Task<ActionResult<Project>> CreateProject(CreateProjectRequest project)
         {
-            try{
+            try
+            {
+                // Initialize a list to store the task IDs
+                var taskIds = new List<string>();
+
+                // Check if tasks are provided in the request
+                if (project.Tasks != null && project.Tasks.Count > 0)
+                {
+                    // Create each task and collect its ID
+                    foreach (var taskRequest in project.Tasks)
+                    {
+                        if (!Enum.TryParse<ProjectTaskStatus>(taskRequest.Status, true, out var taskStatus))
+                        {
+                            return BadRequest("Invalid task status value.");
+                        }
+
+                        var newTask = new ProjectTask
+                        {
+                            Title = taskRequest.Title,
+                            Description = taskRequest.Description,
+                            AssignedTo = taskRequest.AssignedTo,
+                            DueDate = taskRequest.DueDate,
+                            Status = taskStatus
+                        };
+
+                        // Create the task in the database
+                        var taskId = await _projectService.CreateTask(newTask);
+
+                        // Check if the task was created successfully
+                        if (taskId == null)
+                        {
+                            return StatusCode(500, "Failed to create one of the tasks.");
+                        }
+
+                        // Add the created task ID to the list
+                        taskIds.Add(taskId);
+                    }
+                }
+
+                // Create the new project with the collected task IDs
                 var newProject = new Project
                 {
                     Name = project.Name,
@@ -44,20 +83,26 @@ namespace ProjectManagementService.Controllers
                     EndDate = project.EndDate,
                     ProjectMembers = project.ProjectMemberIds,
                     ProjectOwner = project.ProjectOwner,
+                    TaskIds = taskIds,
                     Status = ProjectStatus.NotStarted
                 };
 
+                // Create the project in the database
                 var createdProject = await _projectService.CreateProject(newProject);
 
+                // Check if the project was created successfully
                 if (createdProject == null)
                 {
                     return StatusCode(500, "Failed to create the project.");
                 }
 
+                // Return the created project details
                 return CreatedAtRoute("GetProject", new { id = createdProject.Id }, createdProject);
             }
             catch (Exception e)
             {
+                // Log the exception (optional) and return a 500 status code with error message
+                Console.WriteLine($"Error creating project: {e.Message}");
                 return StatusCode(500, e.Message);
             }
         }
