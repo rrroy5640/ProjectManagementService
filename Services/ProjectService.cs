@@ -19,6 +19,17 @@ namespace ProjectManagementService.Services
             _users = database.GetCollection<UserInfo>("Users");
         }
 
+        public async Task<bool> UserHasAccessToProject(string userId, string projectId)
+        {
+            var project = await GetProjectById(projectId);
+            if (project == null)
+            {
+                return false;
+            }
+
+            return project.ProjectOwner == userId || project.ProjectMembers.Contains(userId);
+        }
+
         public async Task<List<Project>> GetAllProjectsAsync()
         {
             return await _projects.Find(project => true).ToListAsync();
@@ -33,6 +44,11 @@ namespace ProjectManagementService.Services
         public async Task<Project> GetProjectById(string id)
         {
             return await _projects.Find(project => project.Id == id).FirstOrDefaultAsync();
+        }
+
+        public async Task<List<Project>> GetProjectsByOwner(string ownerId)
+        {
+            return await _projects.Find(project => project.ProjectOwner == ownerId).ToListAsync();
         }
 
         public async Task<Project> UpdateProject(string id, Project projectIn)

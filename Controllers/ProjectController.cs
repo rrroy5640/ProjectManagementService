@@ -1,6 +1,9 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using ProjectManagementService.DTOs.Requests;
+using ProjectManagementService.DTOs.Responses;
 using ProjectManagementService.Models;
 using ProjectManagementService.Services;
 
@@ -17,13 +20,33 @@ namespace ProjectManagementService.Controllers
             _projectService = projectService;
         }
 
+        private bool ValidateCurrentUser(string userId)
+        {
+            var currentUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            return currentUserId == userId;
+        }
+
         [HttpGet]
         [Authorize]
-        public async Task<ActionResult<List<Project>>> GetAllProjects()
+        public async Task<ActionResult<List<ProjectDTO>>> GetAllProjects()
         {
             try
             {
-                return await _projectService.GetAllProjectsAsync();
+                var projects = await _projectService.GetAllProjectsAsync();
+                var projectDTOs = projects.Select(project => new ProjectDTO
+                {
+                    Id = project.Id,
+                    Name = project.Name,
+                    Description = project.Description,
+                    StartDate = project.StartDate,
+                    EndDate = project.EndDate,
+                    ProjectMembers = project.ProjectMembers,
+                    ProjectOwner = project.ProjectOwner,
+                    TaskIds = project.TaskIds,
+                    Status = project.Status.ToString()
+                }).ToList();
+
+                return projectDTOs;
             }
             catch (Exception e)
             {
@@ -33,7 +56,7 @@ namespace ProjectManagementService.Controllers
 
         [HttpPost]
         [Authorize]
-        public async Task<ActionResult<Project>> CreateProject(CreateProjectRequest project)
+        public async Task<ActionResult<ProjectDTO>> CreateProject(CreateProjectRequest project)
         {
             try
             {
@@ -90,6 +113,19 @@ namespace ProjectManagementService.Controllers
                 // Create the project in the database
                 var createdProject = await _projectService.CreateProject(newProject);
 
+                var projectDTO = new ProjectDTO
+                {
+                    Id = createdProject.Id,
+                    Name = createdProject.Name,
+                    Description = createdProject.Description,
+                    StartDate = createdProject.StartDate,
+                    EndDate = createdProject.EndDate,
+                    ProjectMembers = createdProject.ProjectMembers,
+                    ProjectOwner = createdProject.ProjectOwner,
+                    TaskIds = createdProject.TaskIds,
+                    Status = createdProject.Status.ToString()
+                };
+
                 // Check if the project was created successfully
                 if (createdProject == null)
                 {
@@ -97,7 +133,7 @@ namespace ProjectManagementService.Controllers
                 }
 
                 // Return the created project details
-                return CreatedAtRoute("GetProject", new { id = createdProject.Id }, createdProject);
+                return CreatedAtRoute("GetProject", new { id = projectDTO.Id }, projectDTO);
             }
             catch (Exception e)
             {
@@ -109,18 +145,46 @@ namespace ProjectManagementService.Controllers
 
         [HttpGet("{id:length(24)}", Name = "GetProject")]
         [Authorize]
-        public async Task<ActionResult<Project>> GetProject(string id)
+        public async Task<ActionResult<ProjectDTO>> GetProjectById(string id)
         {
             try
             {
-                var project = await _projectService.GetProjectById(id);
+                var userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized("User ID claim is missing or invalid.");
+                }
 
+                var project = await _projectService.GetProjectById(id);
                 if (project == null)
                 {
                     return NotFound();
                 }
 
-                return project;
+                if (string.IsNullOrEmpty(project.Id))
+                {
+                    return BadRequest("Project ID is missing or invalid.");
+                }
+
+                if (!await _projectService.UserHasAccessToProject(userId, project.Id))
+                {
+                    return Unauthorized();
+                }
+
+                var projectDTO = new ProjectDTO
+                {
+                    Id = project.Id,
+                    Name = project.Name,
+                    Description = project.Description,
+                    StartDate = project.StartDate,
+                    EndDate = project.EndDate,
+                    ProjectMembers = project.ProjectMembers,
+                    ProjectOwner = project.ProjectOwner,
+                    TaskIds = project.TaskIds,
+                    Status = project.Status.ToString()
+                };
+
+                return Ok(projectDTO);
             }
             catch (Exception e)
             {
