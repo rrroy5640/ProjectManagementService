@@ -7,6 +7,8 @@ using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using ProjectManagementService.Models;
 using ProjectManagementService.Services;
+using Hellang.Middleware.ProblemDetails;
+using Amazon.SQS;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,12 +16,15 @@ var JwtSettings = builder.Configuration.GetSection("JwtSettings");
 var AWSParameterStore = builder.Configuration.GetSection("AWS:ParameterStore");
 
 builder.Services.AddAWSService<IAmazonSimpleSystemsManagement>();
+builder.Services.AddAWSService<IAmazonSQS>();
 var awsOptions = builder.Configuration.GetAWSOptions();
 var ssmClient = awsOptions.CreateServiceClient<IAmazonSimpleSystemsManagement>();
+var sqsClient = awsOptions.CreateServiceClient<IAmazonSQS>();
 
 var JwtSecretKeyPath = AWSParameterStore["JwtSecretKeyPath"];
 var DbConnectionStringPath = AWSParameterStore["DbConnectionStringPath"];
 var DbNamePath = AWSParameterStore["DbNamePath"];
+var SQSUrlPath = AWSParameterStore["SQSUrlPath"];
 
 var Issuer = JwtSettings["Issuer"];
 var Audience = JwtSettings["Audience"];
@@ -48,17 +53,41 @@ if (string.IsNullOrEmpty(Audience))
 {
     throw new ArgumentNullException(nameof(Audience), "Audience cannot be null or empty.");
 }
+if (string.IsNullOrEmpty(SQSUrlPath))
+{
+    throw new ArgumentNullException(nameof(SQSUrlPath), "SQSUrlPath cannot be null or empty.");
+}
 
 await ConfigureJwtAuthentication(builder, ssmClient, JwtSecretKeyPath, Issuer, Audience);
+
 await ConfigureDatabase(builder, ssmClient, DbConnectionStringPath, DbNamePath);
+await ConfigureSQS(builder, sqsClient, SQSUrlPath);
 
 builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton<ProjectService>();
+builder.Services.AddSingleton<SqsService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
+
+builder.Services.AddProblemDetails(options =>
+{
+    // Customize ProblemDetails based on the exception type
+    options.MapToStatusCode<NotImplementedException>(StatusCodes.Status501NotImplemented);
+    options.MapToStatusCode<HttpRequestException>(StatusCodes.Status503ServiceUnavailable);
+
+    // Map custom exceptions to specific status codes
+    options.MapToStatusCode<ArgumentException>(StatusCodes.Status400BadRequest);
+
+    // Configure default problem details for unhandled exceptions
+    options.MapToStatusCode<Exception>(StatusCodes.Status500InternalServerError);
+
+    // Include exception details in development environment
+    options.IncludeExceptionDetails = (ctx, ex) =>
+        builder.Environment.IsDevelopment() || builder.Environment.IsStaging();
+});
 
 var app = builder.Build();
 
@@ -76,6 +105,8 @@ if (!app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+app.UseProblemDetails();
 
 app.Run();
 
@@ -160,6 +191,27 @@ async Task ConfigureDatabase(WebApplicationBuilder builder, IAmazonSimpleSystems
     catch (Exception e)
     {
         Console.WriteLine($"Error retrieving database connection string: {e.Message}");
+        throw;
+    }
+}
+
+async Task ConfigureSQS(WebApplicationBuilder builder, IAmazonSQS sqsClient, string sqsUrlPath)
+{
+    try
+    {
+        var parameterResponse = await ssmClient.GetParameterAsync(new GetParameterRequest
+        {
+            Name = sqsUrlPath,
+            WithDecryption = true
+        });
+
+        var sqsUrl = parameterResponse.Parameter.Value;
+        builder.Services.AddSingleton<SqsService>(sp => new SqsService(sqsClient, sqsUrl));
+    }
+    catch (Exception e)
+
+    {
+        Console.WriteLine($"Error retrieving SQS URL: {e.Message}");
         throw;
     }
 }
