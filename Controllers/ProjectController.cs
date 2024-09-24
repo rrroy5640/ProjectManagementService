@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
+using ProjectManagementService.DTOs;
 using ProjectManagementService.DTOs.Requests;
 using ProjectManagementService.DTOs.Responses;
 using ProjectManagementService.Models;
@@ -14,10 +15,12 @@ namespace ProjectManagementService.Controllers
     public class ProjectController : ControllerBase
     {
         private readonly ProjectService _projectService;
+        private readonly SqsService _sqsService;
 
-        public ProjectController(ProjectService projectService)
+        public ProjectController(ProjectService projectService, SqsService sqsService)
         {
             _projectService = projectService;
+            _sqsService = sqsService;
         }
 
         private async Task<bool> UserHasAccessToProject(string projectId)
@@ -118,6 +121,14 @@ namespace ProjectManagementService.Controllers
 
             var projectDTO = MapProjectToDTO(createdProject);
 
+            var sqsMessage = new SqsMessageDto
+            {
+                MessageType = "ProjectCreated",
+                Payload = projectDTO
+            };
+
+            await _sqsService.SendMessageAsync(sqsMessage);
+
             return CreatedAtRoute("GetProject", new { id = projectDTO.Id }, projectDTO);
         }
 
@@ -187,6 +198,15 @@ namespace ProjectManagementService.Controllers
                     return StatusCode(500, "Failed to update the project.");
                 }
 
+                var projectDTO = MapProjectToDTO(updatedProject);
+
+                var sqsMessage = new SqsMessageDto
+                {
+                    MessageType = "ProjectUpdated",
+                    Payload = projectDTO
+                };
+
+                await _sqsService.SendMessageAsync(sqsMessage);
                 return Ok(updatedProject);
             }
             catch (Exception e)
@@ -236,6 +256,15 @@ namespace ProjectManagementService.Controllers
                 }
 
                 await _projectService.AddProjectMember(id, userId);
+
+                var sqsMessage = new SqsMessageDto
+                {
+                    MessageType = "MemberAddedToProject",
+                    Payload = new { ProjectId = id, UserId = userId }
+                };
+
+                await _sqsService.SendMessageAsync(sqsMessage);
+
                 return NoContent();
             }
             catch (Exception e)
@@ -302,6 +331,14 @@ namespace ProjectManagementService.Controllers
                     return StatusCode(500, "Failed to add task to the project.");
                 }
 
+                var projectDTO = MapProjectToDTO(await _projectService.GetProjectById(id));
+
+                var sqsMessage = new SqsMessageDto
+                {
+                    MessageType = "TaskAddedToProject",
+                    Payload = new { ProjectId = id, TaskId = taskId }
+                };
+
                 return CreatedAtRoute("GetTask", new { id = taskId }, newTask);
             }
             catch (Exception e)
@@ -336,6 +373,16 @@ namespace ProjectManagementService.Controllers
                     Status = taskStatus
                 };
                 await _projectService.UpdateTask(taskId, newTask);
+
+                var projectDTO = MapProjectToDTO(await _projectService.GetProjectById(id));
+
+                var sqsMessage = new SqsMessageDto
+                {
+                    MessageType = "TaskUpdated",
+                    Payload = new { ProjectId = id, TaskId = taskId }
+                };
+                await _sqsService.SendMessageAsync(sqsMessage);
+
                 return NoContent();
             }
             catch (Exception e)

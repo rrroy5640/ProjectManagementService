@@ -1,5 +1,6 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
+using ProjectManagementService.DTOs;
 
 namespace ProjectManagementService.Services
 {
@@ -14,12 +15,12 @@ namespace ProjectManagementService.Services
             _sqsUrl = sqsUrl;
         }
 
-        public async Task SendMessageAsync(string messageBody)
+        public async Task SendMessageAsync(SqsMessageDto messageBody)
         {
             var sendMessageRequest = new SendMessageRequest
             {
                 QueueUrl = _sqsUrl,
-                MessageBody = messageBody
+                MessageBody = messageBody.ToJson()
             };
 
             await _sqsClient.SendMessageAsync(sendMessageRequest);
