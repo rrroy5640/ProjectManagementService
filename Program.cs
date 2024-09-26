@@ -61,7 +61,7 @@ if (string.IsNullOrEmpty(SQSUrlPath))
 await ConfigureJwtAuthentication(builder, ssmClient, JwtSecretKeyPath, Issuer, Audience);
 
 await ConfigureDatabase(builder, ssmClient, DbConnectionStringPath, DbNamePath);
-await ConfigureSQS(builder, sqsClient, SQSUrlPath);
+await ConfigureSQS(builder, sqsClient, ssmClient, SQSUrlPath);
 
 builder.Services.AddAuthorization();
 
@@ -195,7 +195,7 @@ async Task ConfigureDatabase(WebApplicationBuilder builder, IAmazonSimpleSystems
     }
 }
 
-async Task ConfigureSQS(WebApplicationBuilder builder, IAmazonSQS sqsClient, string sqsUrlPath)
+async Task ConfigureSQS(WebApplicationBuilder builder, IAmazonSQS sqsClient, IAmazonSimpleSystemsManagement ssmClient, string sqsUrlPath)
 {
     try
     {
@@ -209,7 +209,6 @@ async Task ConfigureSQS(WebApplicationBuilder builder, IAmazonSQS sqsClient, str
         builder.Services.AddSingleton<SqsService>(sp => new SqsService(sqsClient, sqsUrl));
     }
     catch (Exception e)
-
     {
         Console.WriteLine($"Error retrieving SQS URL: {e.Message}");
         throw;
