@@ -206,7 +206,16 @@ async Task ConfigureSQS(WebApplicationBuilder builder, IAmazonSQS sqsClient, IAm
         });
 
         var sqsUrl = parameterResponse.Parameter.Value;
-        builder.Services.AddSingleton<SqsService>(sp => new SqsService(sqsClient, sqsUrl));
+        builder.Services.Configure<SQSSettings>(option =>
+        {
+            option.Url = sqsUrl;
+        });
+
+        builder.Services.AddSingleton<ISQSSettings>(sp =>
+         sp.GetRequiredService<IOptions<SQSSettings>>().Value
+        );
+
+        
     }
     catch (Exception e)
     {

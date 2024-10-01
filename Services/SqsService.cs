@@ -1,7 +1,7 @@
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using ProjectManagementService.DTOs;
-
+using ProjectManagementService.Models;
 namespace ProjectManagementService.Services
 {
     public class SqsService
@@ -9,10 +9,10 @@ namespace ProjectManagementService.Services
         private readonly IAmazonSQS _sqsClient;
         private readonly string _sqsUrl;
 
-        public SqsService(IAmazonSQS sqsClient, string sqsUrl)
+        public SqsService(IAmazonSQS sqsClient, ISQSSettings sqsSettings)
         {
             _sqsClient = sqsClient;
-            _sqsUrl = sqsUrl;
+            _sqsUrl = sqsSettings.Url;
         }
 
         public async Task SendMessageAsync(SqsMessageDto messageBody)
